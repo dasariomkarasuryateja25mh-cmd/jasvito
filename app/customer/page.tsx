@@ -148,8 +148,10 @@ export default function CustomerPage() {
   }
 
   async function loadExistingRequest() {
-    const { data: { user }, error: authError } =
-      await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) return;
 
@@ -158,23 +160,37 @@ export default function CustomerPage() {
       .select("*")
       .eq("customer_user_id", user.id)
       .in("status", ["pending", "accepted"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
 
-    if (error || !data) {
-      if (error) console.error("EXISTING REQUEST LOAD ERROR:", error);
+    if (error) {
+      console.error(
+        "EXISTING REQUEST LOAD ERROR:",
+        JSON.stringify(error, null, 2)
+      );
       return;
     }
 
-    setCurrentRequest(data);
-    setCheckingStatus(data.status === "pending");
-    setCustomerName(data.customer_name || "");
+    const requests = (data || []) as ServiceRequest[];
+
+    if (requests.length === 0) {
+      return;
+    }
+
+    // Always prefer an accepted request over an older pending request.
+    const activeRequest =
+      requests.find((request) => request.status === "accepted") ||
+      requests[0];
+
+    setCurrentRequest(activeRequest);
+    setCheckingStatus(activeRequest.status === "pending");
+    setCustomerName(activeRequest.customer_name || "");
 
     const { data: providerData } = await supabase
       .from("providers")
-      .select("id, name, skill, location, experience, phone, profile_photo, latitude, longitude")
-      .eq("id", data.provider_id)
+      .select(
+        "id, name, skill, location, experience, phone, profile_photo, latitude, longitude"
+      )
+      .eq("id", activeRequest.provider_id)
       .maybeSingle();
 
     if (providerData) {
@@ -186,7 +202,11 @@ export default function CustomerPage() {
       const list = ratings || [];
       const count = list.length;
       const average = count
-        ? list.reduce((t: number, r: { rating: number }) => t + Number(r.rating), 0) / count
+        ? list.reduce(
+            (total: number, r: { rating: number }) =>
+              total + Number(r.rating),
+            0
+          ) / count
         : 0;
 
       setRequestProvider({
@@ -444,44 +464,86 @@ export default function CustomerPage() {
       return;
     }
 
-    const interval = setInterval(
-      async () => {
-        const { data, error } =
-          await supabase
-            .from("service_requests")
-            .select("*")
-            .eq("id", currentRequest.id)
-            .single();
+    const interval = setInterval(async () => {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-        if (error) {
-          console.error(
-            "STATUS CHECK ERROR:",
-            JSON.stringify(error, null, 2)
-          );
+      if (authError || !user) {
+        return;
+      }
 
-          return;
-        }
+      const { data, error } = await supabase
+        .from("service_requests")
+        .select("*")
+        .eq("customer_user_id", user.id)
+        .in("status", ["pending", "accepted"])
+        .order("created_at", { ascending: false });
 
-        if (data) {
-          setCurrentRequest(data);
+      if (error) {
+        console.error(
+          "STATUS CHECK ERROR:",
+          JSON.stringify(error, null, 2)
+        );
+        return;
+      }
 
-          if (
-            data.status === "accepted" ||
-            data.status === "rejected"
-          ) {
-            setCheckingStatus(false);
-          }
-        }
-      },
-      3000
-    );
+      const requests = (data || []) as ServiceRequest[];
 
-    return () =>
-      clearInterval(interval);
-  }, [
-    currentRequest,
-    checkingStatus,
-  ]);
+      if (requests.length === 0) {
+        return;
+      }
+
+      // If any request has been accepted, show that request immediately.
+      // This prevents an older/newer pending request from hiding the
+      // provider who actually accepted the customer's service request.
+      const activeRequest =
+        requests.find((request) => request.status === "accepted") ||
+        requests[0];
+
+      setCurrentRequest(activeRequest);
+      setCustomerName(activeRequest.customer_name || "");
+
+      if (activeRequest.status === "accepted") {
+        setCheckingStatus(false);
+      }
+
+      const { data: providerData } = await supabase
+        .from("providers")
+        .select(
+          "id, name, skill, location, experience, phone, profile_photo, latitude, longitude"
+        )
+        .eq("id", activeRequest.provider_id)
+        .maybeSingle();
+
+      if (providerData) {
+        const { data: ratings } = await supabase
+          .from("ratings")
+          .select("rating")
+          .eq("provider_id", providerData.id);
+
+        const list = ratings || [];
+        const count = list.length;
+        const average = count
+          ? list.reduce(
+              (total: number, r: { rating: number }) =>
+                total + Number(r.rating),
+              0
+            ) / count
+          : 0;
+
+        setRequestProvider({
+          ...providerData,
+          distance_km: 0,
+          average_rating: average,
+          review_count: count,
+        });
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentRequest, checkingStatus]);
 
   async function loadProviderDetails() {
     if (!currentRequest) {
