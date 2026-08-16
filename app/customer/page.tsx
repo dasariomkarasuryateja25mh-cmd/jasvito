@@ -1335,10 +1335,11 @@ export default function CustomerPage() {
                 />
 
                 <button
-                  onClick={
-                    requestService
-                  }
-                  className="mt-4 w-full rounded-lg bg-gray-900 px-6 py-4 font-semibold text-white hover:bg-gray-800"
+                  type="button"
+                  onClick={() => {
+                    void requestService();
+                  }}
+                  className="mt-4 w-full cursor-pointer rounded-lg bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 active:bg-blue-800"
                 >
                   Request Service
                 </button>
