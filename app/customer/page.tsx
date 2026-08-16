@@ -343,13 +343,58 @@ export default function CustomerPage() {
       return;
     }
 
+    /*
+     * Resolve the real providers.id before creating the request.
+     * The nearby-provider RPC may return either the provider row id
+     * or the linked auth/user id depending on the SQL function.
+     */
+    const { data: providerRecord, error: providerLookupError } =
+      await supabase
+        .from("providers")
+        .select("id, name, skill")
+        .or(
+          `id.eq.${selectedProvider.id},user_id.eq.${selectedProvider.id}`
+        )
+        .maybeSingle();
+
+    if (providerLookupError) {
+      console.error(
+        "PROVIDER LOOKUP ERROR:",
+        JSON.stringify(providerLookupError, null, 2)
+      );
+
+      setMessage(
+        `Unable to identify the selected professional: ${
+          providerLookupError.message ||
+          "provider lookup failed"
+        }`
+      );
+
+      return;
+    }
+
+    if (!providerRecord) {
+      console.error(
+        "PROVIDER NOT FOUND:",
+        selectedProvider.id
+      );
+
+      setMessage(
+        "The selected professional could not be found. Please go back and select the professional again."
+      );
+
+      return;
+    }
+
     const { data, error } = await supabase
       .from("service_requests")
       .insert([
         {
-          provider_id: selectedProvider.id,
+          provider_id: providerRecord.id,
           customer_name: customerName.trim(),
-          service: selectedProvider.skill,
+          service:
+            providerRecord.skill ||
+            selectedProvider.skill,
           location: selectedLocation.address,
           status: "pending",
         },
@@ -364,7 +409,22 @@ export default function CustomerPage() {
       );
 
       setMessage(
-        "Unable to send service request. Please try again."
+        `Unable to send service request: ${
+          error.message ||
+          "database insert failed"
+        }`
+      );
+
+      return;
+    }
+
+    if (!data) {
+      console.error(
+        "REQUEST INSERT RETURNED NO DATA"
+      );
+
+      setMessage(
+        "The service request could not be confirmed. Please try again."
       );
 
       return;
@@ -1335,11 +1395,10 @@ export default function CustomerPage() {
                 />
 
                 <button
-                  type="button"
-                  onClick={() => {
-                    void requestService();
-                  }}
-                  className="mt-4 w-full cursor-pointer rounded-lg bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 active:bg-blue-800"
+                  onClick={
+                    requestService
+                  }
+                  className="mt-4 w-full rounded-lg bg-gray-900 px-6 py-4 font-semibold text-white hover:bg-gray-800"
                 >
                   Request Service
                 </button>
