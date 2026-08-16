@@ -244,6 +244,10 @@ export async function POST(request: Request) {
           user_id: createdUser.user.id,
           username: username,
           account_type: accountType,
+
+          // IMPORTANT:
+          // user_accounts.full_name is NOT NULL
+          full_name: name,
         });
 
     if (accountError) {
