@@ -42,7 +42,13 @@ function LoginPageContent() {
     useState("");
 
   const [messageType, setMessageType] =
-    useState<"success" | "error">("error");
+    useState<"success" | "error">(
+      "error"
+    );
+
+  // --------------------------------
+  // CUSTOMER / PROVIDER SELECTION
+  // --------------------------------
 
   useEffect(() => {
     const type =
@@ -57,6 +63,10 @@ function LoginPageContent() {
     }
   }, [searchParams]);
 
+  // --------------------------------
+  // MESSAGE
+  // --------------------------------
+
   function showMessage(
     text: string,
     type: "success" | "error"
@@ -65,6 +75,10 @@ function LoginPageContent() {
     setMessageType(type);
   }
 
+  // --------------------------------
+  // USERNAME VALIDATION
+  // --------------------------------
+
   function validateUsername(
     value: string
   ) {
@@ -72,6 +86,10 @@ function LoginPageContent() {
       value
     );
   }
+
+  // --------------------------------
+  // CREATE ACCOUNT
+  // --------------------------------
 
   async function createAccount() {
     const cleanUsername =
@@ -85,7 +103,11 @@ function LoginPageContent() {
       return;
     }
 
-    if (!validateUsername(cleanUsername)) {
+    if (
+      !validateUsername(
+        cleanUsername
+      )
+    ) {
       showMessage(
         "Username must be 3–30 characters and contain only letters, numbers or underscore.",
         "error"
@@ -132,23 +154,37 @@ function LoginPageContent() {
           "/api/auth/register",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
+
             body: JSON.stringify({
               username:
                 cleanUsername,
-              password,
-              name: name.trim(),
-              accountType,
+
+              password:
+                password,
+
+              name:
+                name.trim(),
+
+              accountType:
+                accountType,
+
               skill:
-                accountType === "provider"
+                accountType ===
+                "provider"
                   ? skill
                   : "",
+
               experience:
-                accountType === "provider"
-                  ? Number(experience)
+                accountType ===
+                "provider"
+                  ? Number(
+                      experience
+                    )
                   : 0,
             }),
           }
@@ -182,6 +218,7 @@ function LoginPageContent() {
         setIsSignup(false);
         setMessage("");
       }, 1500);
+
     } catch (error) {
       console.error(
         "REGISTER ERROR:",
@@ -197,31 +234,25 @@ function LoginPageContent() {
     }
   }
 
+  // --------------------------------
+  // LOGIN
+  // --------------------------------
+
   async function login() {
-    const cleanUsername =
-      username.trim().toLowerCase();
+    const cleanUsername = username.trim().toLowerCase();
 
     if (!cleanUsername) {
-      showMessage(
-        "Please enter your username.",
-        "error"
-      );
+      showMessage("Please enter your username.", "error");
       return;
     }
 
     if (!validateUsername(cleanUsername)) {
-      showMessage(
-        "Please enter a valid username.",
-        "error"
-      );
+      showMessage("Please enter a valid username.", "error");
       return;
     }
 
     if (!password) {
-      showMessage(
-        "Please enter your password.",
-        "error"
-      );
+      showMessage("Please enter your password.", "error");
       return;
     }
 
@@ -229,125 +260,57 @@ function LoginPageContent() {
     setMessage("");
 
     try {
-      // Clear any old browser session first
+      // Clear any previous role session first.
       await supabase.auth.signOut();
 
-      const internalEmail =
-        `${cleanUsername}@jasvito.local`;
+      const internalEmail = `${cleanUsername}@jasvito.local`;
 
-      // Create the actual browser Supabase session
-      const {
-        data: authData,
-        error: authError,
-      } =
+      const { data, error } =
         await supabase.auth.signInWithPassword({
           email: internalEmail,
           password,
         });
 
-      if (authError || !authData.user) {
-        console.error(
-          "LOGIN AUTH ERROR:",
-          authError
-        );
-
+      if (error || !data.user) {
         setLoading(false);
-
-        showMessage(
-          "Username or password is incorrect.",
-          "error"
-        );
-
+        showMessage("Username or password is incorrect.", "error");
         return;
       }
 
-      // Get the account type belonging to
-      // the authenticated user
-      const {
-        data: account,
-        error: accountError,
-      } =
+      const { data: account, error: accountError } =
         await supabase
           .from("user_accounts")
           .select("account_type")
-          .eq(
-            "user_id",
-            authData.user.id
-          )
+          .eq("user_id", data.user.id)
           .maybeSingle();
 
-      if (accountError) {
-        console.error(
-          "ACCOUNT LOOKUP ERROR:",
-          accountError
-        );
-
+      if (accountError || !account) {
         await supabase.auth.signOut();
-
         setLoading(false);
-
-        showMessage(
-          "Unable to load your account.",
-          "error"
-        );
-
+        showMessage("Unable to load your account type.", "error");
         return;
       }
-
-      if (!account) {
-        await supabase.auth.signOut();
-
-        setLoading(false);
-
-        showMessage(
-          "Account profile not found.",
-          "error"
-        );
-
-        return;
-      }
-
-      const actualAccountType =
-        account.account_type as AccountType;
-
-      console.log(
-        "LOGIN SUCCESS:",
-        {
-          username:
-            cleanUsername,
-          accountType:
-            actualAccountType,
-          userId:
-            authData.user.id,
-        }
-      );
 
       setLoading(false);
 
-      if (
-        actualAccountType ===
-        "provider"
-      ) {
-        window.location.href =
-          "/provider";
-      } else {
-        window.location.href =
-          "/customer";
-      }
+      window.location.replace(
+        account.account_type === "provider"
+          ? "/provider"
+          : "/customer"
+      );
     } catch (error) {
-      console.error(
-        "LOGIN ERROR:",
-        error
-      );
-
+      console.error("LOGIN ERROR:", error);
       setLoading(false);
-
       showMessage(
         "Unable to connect to the server. Please try again.",
         "error"
       );
     }
   }
+
+  // --------------------------------
+  // SUBMIT
+  // --------------------------------
 
   async function handleSubmit() {
     if (isSignup) {
@@ -357,23 +320,37 @@ function LoginPageContent() {
     }
   }
 
+  // --------------------------------
+  // PAGE
+  // --------------------------------
+
   return (
     <main className="min-h-screen bg-gray-50">
 
+      {/* NAVIGATION */}
+
       <nav className="bg-white px-8 py-5 shadow-sm">
+
         <div className="mx-auto max-w-5xl">
+
           <a
             href="/"
             className="text-2xl font-bold text-blue-600"
           >
             JASVITO
           </a>
+
         </div>
+
       </nav>
+
+      {/* MAIN */}
 
       <section className="flex min-h-[calc(100vh-80px)] items-center justify-center px-6 py-12">
 
         <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg">
+
+          {/* HEADER */}
 
           <div className="text-center">
 
@@ -382,18 +359,24 @@ function LoginPageContent() {
             </p>
 
             <h1 className="mt-2 text-3xl font-bold text-gray-900">
+
               {isSignup
                 ? "Create your account"
                 : "Welcome back"}
+
             </h1>
 
             <p className="mt-2 text-gray-600">
+
               {isSignup
                 ? "Create your JASVITO account."
                 : "Login using your username and password."}
+
             </p>
 
           </div>
+
+          {/* ACCOUNT TYPE */}
 
           <div className="mt-8">
 
@@ -403,17 +386,23 @@ function LoginPageContent() {
 
             <div className="mt-3 grid grid-cols-2 gap-4">
 
+              {/* CUSTOMER */}
+
               <button
                 type="button"
                 onClick={() =>
-                  setAccountType("customer")
+                  setAccountType(
+                    "customer"
+                  )
                 }
                 className={`rounded-xl border p-5 ${
-                  accountType === "customer"
+                  accountType ===
+                  "customer"
                     ? "border-blue-600 bg-blue-50"
                     : "border-gray-300 bg-white"
                 }`}
               >
+
                 <div className="text-3xl">
                   👤
                 </div>
@@ -425,19 +414,26 @@ function LoginPageContent() {
                 <p className="mt-1 text-xs text-gray-500">
                   Find local professionals
                 </p>
+
               </button>
+
+              {/* PROVIDER */}
 
               <button
                 type="button"
                 onClick={() =>
-                  setAccountType("provider")
+                  setAccountType(
+                    "provider"
+                  )
                 }
                 className={`rounded-xl border p-5 ${
-                  accountType === "provider"
+                  accountType ===
+                  "provider"
                     ? "border-blue-600 bg-blue-50"
                     : "border-gray-300 bg-white"
                 }`}
               >
+
                 <div className="text-3xl">
                   🛠️
                 </div>
@@ -449,10 +445,14 @@ function LoginPageContent() {
                 <p className="mt-1 text-xs text-gray-500">
                   Offer your services
                 </p>
+
               </button>
 
             </div>
+
           </div>
+
+          {/* FULL NAME */}
 
           {isSignup && (
             <div className="mt-6">
@@ -465,7 +465,9 @@ function LoginPageContent() {
                 type="text"
                 value={name}
                 onChange={(e) =>
-                  setName(e.target.value)
+                  setName(
+                    e.target.value
+                  )
                 }
                 placeholder="Enter your full name"
                 className="mt-3 w-full rounded-lg border border-gray-300 p-4 outline-none focus:border-blue-500"
@@ -473,6 +475,8 @@ function LoginPageContent() {
 
             </div>
           )}
+
+          {/* USERNAME */}
 
           <div className="mt-6">
 
@@ -484,7 +488,9 @@ function LoginPageContent() {
               type="text"
               value={username}
               onChange={(e) =>
-                setUsername(e.target.value)
+                setUsername(
+                  e.target.value
+                )
               }
               placeholder="Example: provider123"
               autoComplete="username"
@@ -497,9 +503,15 @@ function LoginPageContent() {
 
           </div>
 
+          {/* PROVIDER DETAILS */}
+
           {isSignup &&
-            accountType === "provider" && (
+            accountType ===
+              "provider" && (
               <>
+
+                {/* SERVICE */}
+
                 <div className="mt-6">
 
                   <label className="font-semibold text-gray-800">
@@ -509,7 +521,9 @@ function LoginPageContent() {
                   <select
                     value={skill}
                     onChange={(e) =>
-                      setSkill(e.target.value)
+                      setSkill(
+                        e.target.value
+                      )
                     }
                     className="mt-3 w-full rounded-lg border border-gray-300 bg-white p-4"
                   >
@@ -567,7 +581,10 @@ function LoginPageContent() {
                     </option>
 
                   </select>
+
                 </div>
+
+                {/* EXPERIENCE */}
 
                 <div className="mt-6">
 
@@ -579,7 +596,9 @@ function LoginPageContent() {
                     type="number"
                     min="0"
                     max="60"
-                    value={experience}
+                    value={
+                      experience
+                    }
                     onChange={(e) =>
                       setExperience(
                         e.target.value
@@ -590,8 +609,11 @@ function LoginPageContent() {
                   />
 
                 </div>
+
               </>
             )}
+
+          {/* PASSWORD */}
 
           <div className="mt-6">
 
@@ -603,7 +625,9 @@ function LoginPageContent() {
               type="password"
               value={password}
               onChange={(e) =>
-                setPassword(e.target.value)
+                setPassword(
+                  e.target.value
+                )
               }
               placeholder="Minimum 6 characters"
               autoComplete={
@@ -615,6 +639,8 @@ function LoginPageContent() {
             />
 
           </div>
+
+          {/* INFORMATION */}
 
           {isSignup && (
             <div className="mt-5 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
@@ -630,10 +656,13 @@ function LoginPageContent() {
             </div>
           )}
 
+          {/* MESSAGE */}
+
           {message && (
             <div
               className={`mt-5 rounded-lg p-4 text-center font-semibold ${
-                messageType === "success"
+                messageType ===
+                "success"
                   ? "bg-green-50 text-green-700"
                   : "bg-red-50 text-red-700"
               }`}
@@ -642,39 +671,54 @@ function LoginPageContent() {
             </div>
           )}
 
+          {/* BUTTON */}
+
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={
+              handleSubmit
+            }
             disabled={loading}
             className="mt-6 w-full rounded-lg bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
           >
+
             {loading
               ? "Please wait..."
               : isSignup
               ? "Create Account"
               : "Login"}
+
           </button>
+
+          {/* SWITCH */}
 
           <div className="mt-6 text-center">
 
             <span className="text-gray-600">
+
               {isSignup
                 ? "Already have an account?"
                 : "Don't have an account?"}
+
             </span>
 
             <button
               type="button"
               onClick={() => {
-                setIsSignup(!isSignup);
+                setIsSignup(
+                  !isSignup
+                );
+
                 setMessage("");
                 setPassword("");
               }}
               className="ml-2 font-bold text-blue-600 hover:underline"
             >
+
               {isSignup
                 ? "Login"
                 : "Create Account"}
+
             </button>
 
           </div>
@@ -687,18 +731,31 @@ function LoginPageContent() {
   );
 }
 
+// --------------------------------
+// SUSPENSE WRAPPER
+// --------------------------------
+
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-gray-50">
+
           <p className="text-gray-600">
             Loading JASVITO...
           </p>
+
         </main>
       }
     >
+
       <LoginPageContent />
+
     </Suspense>
   );
 }
+
+
+
+
+

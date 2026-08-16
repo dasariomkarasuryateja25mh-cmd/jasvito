@@ -33,6 +33,7 @@ type CustomerProfile = {
 type ServiceRequest = {
   id: string;
   provider_id: string;
+  customer_user_id?: string | null;
   customer_name: string;
   service: string;
   location: string;
@@ -146,8 +147,60 @@ export default function CustomerPage() {
     }
   }
 
+  async function loadExistingRequest() {
+    const { data: { user }, error: authError } =
+      await supabase.auth.getUser();
+
+    if (authError || !user) return;
+
+    const { data, error } = await supabase
+      .from("service_requests")
+      .select("*")
+      .eq("customer_user_id", user.id)
+      .in("status", ["pending", "accepted"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      if (error) console.error("EXISTING REQUEST LOAD ERROR:", error);
+      return;
+    }
+
+    setCurrentRequest(data);
+    setCheckingStatus(data.status === "pending");
+    setCustomerName(data.customer_name || "");
+
+    const { data: providerData } = await supabase
+      .from("providers")
+      .select("id, name, skill, location, experience, phone, profile_photo, latitude, longitude")
+      .eq("id", data.provider_id)
+      .maybeSingle();
+
+    if (providerData) {
+      const { data: ratings } = await supabase
+        .from("ratings")
+        .select("rating")
+        .eq("provider_id", providerData.id);
+
+      const list = ratings || [];
+      const count = list.length;
+      const average = count
+        ? list.reduce((t: number, r: { rating: number }) => t + Number(r.rating), 0) / count
+        : 0;
+
+      setRequestProvider({
+        ...providerData,
+        distance_km: 0,
+        average_rating: average,
+        review_count: count,
+      });
+    }
+  }
+
   useEffect(() => {
     loadCustomerProfile();
+    loadExistingRequest();
   }, []);
 
   function getSelectedLocation() {
@@ -322,13 +375,9 @@ export default function CustomerPage() {
   }
 
   async function requestService() {
-    if (!selectedProvider) {
-      setMessage("Please select a professional first.");
-      return;
-    }
+    if (!selectedProvider) return;
 
     const selectedLocation = getSelectedLocation();
-
     if (!selectedLocation) {
       setMessage("Please select a valid Home or Office location.");
       return;
@@ -341,65 +390,53 @@ export default function CustomerPage() {
 
     setMessage("Sending service request...");
 
-    try {
-      /*
-       * IMPORTANT:
-       * Service-request creation is done through the SECURITY DEFINER
-       * Supabase RPC function create_service_request.
-       * This avoids the browser INSERT/RLS problem that was blocking
-       * the request even though the button itself was working.
-       */
-      const { data, error } = await supabase.rpc(
-        "create_service_request",
-        {
-          p_provider_id: selectedProvider.id,
-          p_customer_name: customerName.trim(),
-          p_service: selectedProvider.skill || skill,
-          p_location: selectedLocation.address,
-        }
-      );
+    const { data: { user }, error: authError } =
+      await supabase.auth.getUser();
 
-      if (error) {
-        console.error(
-          "CREATE SERVICE REQUEST ERROR:",
-          JSON.stringify(error, null, 2)
-        );
-
-        setMessage(
-          `Unable to send service request: ${
-            error.message || "Request creation failed."
-          }`
-        );
-        return;
-      }
-
-      if (!data) {
-        console.error("CREATE SERVICE REQUEST RETURNED NO DATA");
-        setMessage("Request was not confirmed. Please try again.");
-        return;
-      }
-
-      const createdRequest = Array.isArray(data) ? data[0] : data;
-
-      if (!createdRequest?.id) {
-        console.error("INVALID REQUEST RESPONSE:", data);
-        setMessage("Request was not confirmed. Please try again.");
-        return;
-      }
-
-      setCurrentRequest(createdRequest);
-      setRequestProvider(selectedProvider);
-      setSelectedProvider(null);
-
-      setMessage(
-        "Service request sent successfully! Waiting for technician response. ⏳"
-      );
-
-      setCheckingStatus(true);
-    } catch (err) {
-      console.error("REQUEST SERVICE EXCEPTION:", err);
-      setMessage("Something went wrong while sending the request. Please try again.");
+    if (authError || !user) {
+      setMessage("Your login session has expired. Please login again.");
+      return;
     }
+
+    const { data: providerRecord, error: providerError } =
+      await supabase
+        .from("providers")
+        .select("id, name, skill")
+        .or(`id.eq.${selectedProvider.id},user_id.eq.${selectedProvider.id}`)
+        .maybeSingle();
+
+    if (providerError || !providerRecord) {
+      setMessage("The selected professional could not be found. Please select again.");
+      return;
+    }
+
+    const { data, error } = await supabase.rpc(
+      "create_service_request_v2",
+      {
+        p_provider_id: providerRecord.id,
+        p_customer_name: customerName.trim(),
+        p_service: providerRecord.skill || selectedProvider.skill,
+        p_location: selectedLocation.address,
+      }
+    );
+
+    if (error) {
+      console.error("REQUEST ERROR:", error);
+      setMessage(`Unable to send service request: ${error.message}`);
+      return;
+    }
+
+    const created = Array.isArray(data) ? data[0] : data;
+    if (!created?.id) {
+      setMessage("The service request could not be confirmed. Please try again.");
+      return;
+    }
+
+    setCurrentRequest(created);
+    setRequestProvider(selectedProvider);
+    setSelectedProvider(null);
+    setCheckingStatus(true);
+    setMessage("Service request sent successfully! Waiting for technician response. ⏳");
   }
 
   useEffect(() => {

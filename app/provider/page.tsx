@@ -121,23 +121,23 @@ export default function ProviderPage() {
     setLoading(false);
   }
 
-  async function loadRequests() {
+  async function loadRequests(providerId?: string) {
     /*
      * Service requests store providers.id in provider_id.
      * The provider dashboard must therefore load the provider row
      * first and then filter requests by that exact providers.id.
      */
-    if (!provider?.id) {
-      console.error(
-        "REQUEST LOAD ERROR: Provider profile is not loaded yet."
-      );
+    const currentProviderId = providerId || provider?.id;
+
+    if (!currentProviderId) {
+      console.error("REQUEST LOAD ERROR: Provider profile is not loaded yet.");
       return;
     }
 
     const { data, error } = await supabase
       .from("service_requests")
       .select("*")
-      .eq("provider_id", provider.id)
+      .eq("provider_id", currentProviderId)
       .order("created_at", {
         ascending: false,
       });
@@ -319,35 +319,50 @@ export default function ProviderPage() {
 
   async function updateRequest(
     requestId: string,
-    newStatus: string
+    newStatus: "accepted" | "rejected"
   ) {
-    const { error } = await supabase
-      .from("service_requests")
-      .update({
-        status: newStatus,
-      })
-      .eq("id", requestId);
+    setMessage("");
+
+    const { data, error } = await supabase.rpc(
+      "update_service_request_status",
+      {
+        p_request_id: requestId,
+        p_status: newStatus,
+      }
+    );
 
     if (error) {
-      console.error(
-        "UPDATE ERROR:",
-        error
-      );
-
+      console.error("REQUEST STATUS UPDATE ERROR:", error);
       setMessage(
-        "Unable to update request."
+        `Unable to ${newStatus === "accepted" ? "accept" : "reject"} the request: ${error.message}`
       );
-
       return;
     }
 
-    setMessage(
-      newStatus === "accepted"
-        ? "Service request accepted! ✅"
-        : "Service request rejected."
+    const updated = Array.isArray(data) ? data[0] : data;
+
+    if (!updated?.id) {
+      setMessage("The request was not updated. Please try again.");
+      return;
+    }
+
+    setRequests((current) =>
+      current.map((r) =>
+        r.id === requestId
+          ? { ...r, status: updated.status }
+          : r
+      )
     );
 
-    await loadRequests();
+    setMessage(
+      newStatus === "accepted"
+        ? "Service request accepted successfully! ✅"
+        : "Service request rejected successfully."
+    );
+
+    if (provider?.id) {
+      await loadRequests(provider.id);
+    }
   }
 
   useEffect(() => {
@@ -438,6 +453,16 @@ export default function ProviderPage() {
     const interval = setInterval(() => {
       loadRequests();
     }, 5000);
+
+    return () => clearInterval(interval);
+  }, [provider?.id]);
+
+  useEffect(() => {
+    if (!provider?.id) return;
+
+    const interval = setInterval(() => {
+      loadRequests(provider.id);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [provider?.id]);
