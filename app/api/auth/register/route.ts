@@ -196,10 +196,12 @@ export async function POST(request: Request) {
           username,
           account_type: accountType,
           full_name: name,
+
           skill:
             accountType === "provider"
               ? skill
               : "",
+
           experience:
             accountType === "provider"
               ? experience
@@ -234,40 +236,23 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------
-    // CREATE USER ACCOUNT
+    // ACCOUNT PROFILE
     // -----------------------------
-
-    const { error: accountError } =
-      await supabaseAdmin
-        .from("user_accounts")
-        .insert({
-          user_id: createdUser.user.id,
-          username: username,
-          account_type: accountType,
-
-          // IMPORTANT:
-          // user_accounts.full_name is NOT NULL
-          full_name: name,
-        });
-
-    if (accountError) {
-      console.error(
-        "USER ACCOUNT ERROR:",
-        accountError
-      );
-
-      await supabaseAdmin.auth.admin.deleteUser(
-        createdUser.user.id
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Account profile could not be created.",
-        },
-        { status: 500 }
-      );
-    }
+    //
+    // IMPORTANT:
+    // The Supabase database trigger
+    // "on_auth_user_created_jasvito"
+    // automatically calls
+    // "handle_new_jasvito_user()".
+    //
+    // That trigger creates:
+    // 1. user_accounts
+    // 2. customer_profiles OR providers
+    //
+    // Therefore we DO NOT insert into
+    // user_accounts here.
+    //
+    // -----------------------------
 
     return NextResponse.json(
       {
