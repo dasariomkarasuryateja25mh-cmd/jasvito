@@ -7,7 +7,6 @@ import {
 } from "react";
 
 import { useSearchParams } from "next/navigation";
-import { supabase } from "../lib/supabase";
 
 type AccountType = "customer" | "provider";
 
@@ -95,17 +94,14 @@ function LoginPageContent() {
     const cleanUsername =
       username.trim().toLowerCase();
 
-    // Full name
     if (!name.trim()) {
       showMessage(
         "Please enter your full name.",
         "error"
       );
-
       return;
     }
 
-    // Username
     if (
       !validateUsername(
         cleanUsername
@@ -115,21 +111,17 @@ function LoginPageContent() {
         "Username must be 3–30 characters and contain only letters, numbers or underscore.",
         "error"
       );
-
       return;
     }
 
-    // Password
     if (password.length < 6) {
       showMessage(
         "Password must contain at least 6 characters.",
         "error"
       );
-
       return;
     }
 
-    // Provider service
     if (
       accountType === "provider" &&
       !skill
@@ -138,11 +130,9 @@ function LoginPageContent() {
         "Please select your service.",
         "error"
       );
-
       return;
     }
 
-    // Provider experience
     if (
       accountType === "provider" &&
       experience === ""
@@ -151,7 +141,6 @@ function LoginPageContent() {
         "Please enter your years of experience.",
         "error"
       );
-
       return;
     }
 
@@ -159,10 +148,6 @@ function LoginPageContent() {
     setMessage("");
 
     try {
-      // --------------------------------
-      // SEND REGISTRATION TO SERVER
-      // --------------------------------
-
       const response =
         await fetch(
           "/api/auth/register",
@@ -219,10 +204,6 @@ function LoginPageContent() {
         return;
       }
 
-      // --------------------------------
-      // SUCCESS
-      // --------------------------------
-
       setLoading(false);
 
       showMessage(
@@ -232,7 +213,6 @@ function LoginPageContent() {
 
       setPassword("");
 
-      // Switch to login
       setTimeout(() => {
         setIsSignup(false);
         setMessage("");
@@ -261,13 +241,11 @@ function LoginPageContent() {
     const cleanUsername =
       username.trim().toLowerCase();
 
-    // Username
     if (!cleanUsername) {
       showMessage(
         "Please enter your username.",
         "error"
       );
-
       return;
     }
 
@@ -280,156 +258,93 @@ function LoginPageContent() {
         "Please enter a valid username.",
         "error"
       );
-
       return;
     }
 
-    // Password
     if (!password) {
       showMessage(
         "Please enter your password.",
         "error"
       );
-
       return;
     }
 
     setLoading(true);
     setMessage("");
 
-    // --------------------------------
-    // INTERNAL SUPABASE LOGIN IDENTITY
-    // --------------------------------
+    try {
+      const response =
+        await fetch(
+          "/api/auth/login",
+          {
+            method: "POST",
 
-    const internalEmail =
-      `${cleanUsername}@jasvito.local`;
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-    const {
-      data,
-      error,
-    } =
-      await supabase.auth.signInWithPassword(
-        {
-          email:
-            internalEmail,
+            body: JSON.stringify({
+              username:
+                cleanUsername,
 
-          password:
-            password,
-        }
-      );
+              password:
+                password,
+            }),
+          }
+        );
 
-    // --------------------------------
-    // LOGIN ERROR
-    // --------------------------------
+      const result =
+        await response.json();
 
-    if (error) {
+      if (!response.ok) {
+        setLoading(false);
+
+        showMessage(
+          result.error ||
+            "Username or password is incorrect.",
+          "error"
+        );
+
+        return;
+      }
+
+      if (!result.success) {
+        setLoading(false);
+
+        showMessage(
+          "Login failed.",
+          "error"
+        );
+
+        return;
+      }
+
+      setLoading(false);
+
+      if (
+        result.accountType ===
+        "provider"
+      ) {
+        window.location.href =
+          "/provider";
+      } else {
+        window.location.href =
+          "/customer";
+      }
+
+    } catch (error) {
       console.error(
-        "LOGIN ERROR:",
-        JSON.stringify(
-          error,
-          null,
-          2
-        )
+        "LOGIN REQUEST ERROR:",
+        error
       );
 
       setLoading(false);
 
       showMessage(
-        "Username or password is incorrect.",
+        "Unable to connect to the server. Please try again.",
         "error"
       );
-
-      return;
-    }
-
-    // --------------------------------
-    // USER CHECK
-    // --------------------------------
-
-    if (!data.user) {
-      setLoading(false);
-
-      showMessage(
-        "Login failed.",
-        "error"
-      );
-
-      return;
-    }
-
-    // --------------------------------
-    // GET ACCOUNT TYPE
-    // --------------------------------
-
-    const {
-      data: account,
-      error: accountError,
-    } =
-      await supabase
-        .from("user_accounts")
-        .select(
-          "account_type"
-        )
-        .eq(
-          "user_id",
-          data.user.id
-        )
-        .maybeSingle();
-
-    // --------------------------------
-    // ACCOUNT ERROR
-    // --------------------------------
-
-    if (accountError) {
-      console.error(
-        "ACCOUNT LOOKUP ERROR:",
-        JSON.stringify(
-          accountError,
-          null,
-          2
-        )
-      );
-
-      setLoading(false);
-
-      showMessage(
-        "Unable to load your account.",
-        "error"
-      );
-
-      return;
-    }
-
-    // --------------------------------
-    // ACCOUNT NOT FOUND
-    // --------------------------------
-
-    if (!account) {
-      setLoading(false);
-
-      showMessage(
-        "Account profile not found. Please contact support.",
-        "error"
-      );
-
-      return;
-    }
-
-    // --------------------------------
-    // REDIRECT
-    // --------------------------------
-
-    setLoading(false);
-
-    if (
-      account.account_type ===
-      "provider"
-    ) {
-      window.location.href =
-        "/provider";
-    } else {
-      window.location.href =
-        "/customer";
     }
   }
 
@@ -634,6 +549,7 @@ function LoginPageContent() {
             accountType ===
               "provider" && (
               <>
+
                 {/* SERVICE */}
 
                 <div className="mt-6">
@@ -819,9 +735,11 @@ function LoginPageContent() {
           <div className="mt-6 text-center">
 
             <span className="text-gray-600">
+
               {isSignup
                 ? "Already have an account?"
                 : "Don't have an account?"}
+
             </span>
 
             <button
@@ -862,13 +780,17 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-gray-50">
+
           <p className="text-gray-600">
             Loading JASVITO...
           </p>
+
         </main>
       }
     >
+
       <LoginPageContent />
+
     </Suspense>
   );
 }
