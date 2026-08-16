@@ -323,124 +323,83 @@ export default function CustomerPage() {
 
   async function requestService() {
     if (!selectedProvider) {
+      setMessage("Please select a professional first.");
       return;
     }
 
-    const selectedLocation =
-      getSelectedLocation();
+    const selectedLocation = getSelectedLocation();
 
     if (!selectedLocation) {
-      setMessage(
-        "Please select a valid Home or Office location."
-      );
+      setMessage("Please select a valid Home or Office location.");
       return;
     }
 
     if (!customerName.trim()) {
-      setMessage(
-        "Please enter your name before requesting a service."
-      );
+      setMessage("Please enter your name before requesting a service.");
       return;
     }
 
-    /*
-     * Resolve the real providers.id before creating the request.
-     * The nearby-provider RPC may return either the provider row id
-     * or the linked auth/user id depending on the SQL function.
-     */
-    const { data: providerRecord, error: providerLookupError } =
-      await supabase
-        .from("providers")
-        .select("id, name, skill")
-        .or(
-          `id.eq.${selectedProvider.id},user_id.eq.${selectedProvider.id}`
-        )
-        .maybeSingle();
+    setMessage("Sending service request...");
 
-    if (providerLookupError) {
-      console.error(
-        "PROVIDER LOOKUP ERROR:",
-        JSON.stringify(providerLookupError, null, 2)
-      );
-
-      setMessage(
-        `Unable to identify the selected professional: ${
-          providerLookupError.message ||
-          "provider lookup failed"
-        }`
-      );
-
-      return;
-    }
-
-    if (!providerRecord) {
-      console.error(
-        "PROVIDER NOT FOUND:",
-        selectedProvider.id
-      );
-
-      setMessage(
-        "The selected professional could not be found. Please go back and select the professional again."
-      );
-
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("service_requests")
-      .insert([
+    try {
+      /*
+       * IMPORTANT:
+       * Service-request creation is done through the SECURITY DEFINER
+       * Supabase RPC function create_service_request.
+       * This avoids the browser INSERT/RLS problem that was blocking
+       * the request even though the button itself was working.
+       */
+      const { data, error } = await supabase.rpc(
+        "create_service_request",
         {
-          provider_id: providerRecord.id,
-          customer_name: customerName.trim(),
-          service:
-            providerRecord.skill ||
-            selectedProvider.skill,
-          location: selectedLocation.address,
-          status: "pending",
-        },
-      ])
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error(
-        "REQUEST ERROR:",
-        JSON.stringify(error, null, 2)
+          p_provider_id: selectedProvider.id,
+          p_customer_name: customerName.trim(),
+          p_service: selectedProvider.skill || skill,
+          p_location: selectedLocation.address,
+        }
       );
+
+      if (error) {
+        console.error(
+          "CREATE SERVICE REQUEST ERROR:",
+          JSON.stringify(error, null, 2)
+        );
+
+        setMessage(
+          `Unable to send service request: ${
+            error.message || "Request creation failed."
+          }`
+        );
+        return;
+      }
+
+      if (!data) {
+        console.error("CREATE SERVICE REQUEST RETURNED NO DATA");
+        setMessage("Request was not confirmed. Please try again.");
+        return;
+      }
+
+      const createdRequest = Array.isArray(data) ? data[0] : data;
+
+      if (!createdRequest?.id) {
+        console.error("INVALID REQUEST RESPONSE:", data);
+        setMessage("Request was not confirmed. Please try again.");
+        return;
+      }
+
+      setCurrentRequest(createdRequest);
+      setRequestProvider(selectedProvider);
+      setSelectedProvider(null);
 
       setMessage(
-        `Unable to send service request: ${
-          error.message ||
-          "database insert failed"
-        }`
+        "Service request sent successfully! Waiting for technician response. ⏳"
       );
 
-      return;
+      setCheckingStatus(true);
+    } catch (err) {
+      console.error("REQUEST SERVICE EXCEPTION:", err);
+      setMessage("Something went wrong while sending the request. Please try again.");
     }
-
-    if (!data) {
-      console.error(
-        "REQUEST INSERT RETURNED NO DATA"
-      );
-
-      setMessage(
-        "The service request could not be confirmed. Please try again."
-      );
-
-      return;
-    }
-
-    setCurrentRequest(data);
-
-    setRequestProvider(selectedProvider);
-
-    setSelectedProvider(null);
-
-    setMessage(
-      "Service request sent successfully! Waiting for technician response. ⏳"
-    );
-
-    setCheckingStatus(true);
   }
 
   useEffect(() => {
