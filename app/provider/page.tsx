@@ -122,9 +122,22 @@ export default function ProviderPage() {
   }
 
   async function loadRequests() {
+    /*
+     * Service requests store providers.id in provider_id.
+     * The provider dashboard must therefore load the provider row
+     * first and then filter requests by that exact providers.id.
+     */
+    if (!provider?.id) {
+      console.error(
+        "REQUEST LOAD ERROR: Provider profile is not loaded yet."
+      );
+      return;
+    }
+
     const { data, error } = await supabase
       .from("service_requests")
       .select("*")
+      .eq("provider_id", provider.id)
       .order("created_at", {
         ascending: false,
       });
@@ -132,7 +145,13 @@ export default function ProviderPage() {
     if (error) {
       console.error(
         "REQUEST LOAD ERROR:",
-        error
+        JSON.stringify(error, null, 2)
+      );
+
+      setMessage(
+        `Unable to load service requests: ${
+          error.message || "database error"
+        }`
       );
 
       return;
@@ -335,14 +354,93 @@ export default function ProviderPage() {
     async function load() {
       setLoading(true);
 
-      await loadProvider();
-      await loadRequests();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        setMessage("Please login before using the provider dashboard.");
+        setLoading(false);
+        return;
+      }
+
+      const { data: providerData, error: providerError } =
+        await supabase
+          .from("providers")
+          .select(
+            "id, user_id, name, skill, location, experience, phone, service_location, latitude, longitude"
+          )
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+      if (providerError) {
+        console.error(
+          "PROVIDER LOAD ERROR:",
+          JSON.stringify(providerError, null, 2)
+        );
+        setMessage("Unable to load provider profile.");
+        setLoading(false);
+        return;
+      }
+
+      if (!providerData) {
+        setMessage(
+          "Provider profile not found. Please complete your provider profile."
+        );
+        setLoading(false);
+        return;
+      }
+
+      setProvider(providerData);
+      setName(providerData.name || "");
+      setSkill(providerData.skill || "");
+      setLocation(providerData.location || "");
+      setExperience(providerData.experience?.toString() || "");
+      setPhone(providerData.phone || "");
+      setLatitude(providerData.latitude ?? null);
+      setLongitude(providerData.longitude ?? null);
+
+      const { data: requestData, error: requestError } =
+        await supabase
+          .from("service_requests")
+          .select("*")
+          .eq("provider_id", providerData.id)
+          .order("created_at", {
+            ascending: false,
+          });
+
+      if (requestError) {
+        console.error(
+          "REQUEST LOAD ERROR:",
+          JSON.stringify(requestError, null, 2)
+        );
+        setMessage(
+          `Unable to load service requests: ${
+            requestError.message || "database error"
+          }`
+        );
+      } else {
+        setRequests(requestData || []);
+      }
 
       setLoading(false);
     }
 
     load();
   }, []);
+
+  useEffect(() => {
+    if (!provider?.id) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      loadRequests();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [provider?.id]);
 
   if (loading) {
     return (
