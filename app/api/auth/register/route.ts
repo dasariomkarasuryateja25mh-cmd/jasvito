@@ -12,19 +12,10 @@ export async function POST(request: Request) {
       .toLowerCase();
 
     const password = String(body.password || "");
-
     const name = String(body.name || "").trim();
-
-    const accountType =
-      body.accountType as AccountType;
-
+    const accountType = body.accountType as AccountType;
     const skill = String(body.skill || "").trim();
-
     const experience = Number(body.experience || 0);
-
-    // -----------------------------
-    // VALIDATION
-    // -----------------------------
 
     if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
       return NextResponse.json(
@@ -39,8 +30,7 @@ export async function POST(request: Request) {
     if (password.length < 6) {
       return NextResponse.json(
         {
-          error:
-            "Password must contain at least 6 characters.",
+          error: "Password must contain at least 6 characters.",
         },
         { status: 400 }
       );
@@ -48,9 +38,7 @@ export async function POST(request: Request) {
 
     if (!name) {
       return NextResponse.json(
-        {
-          error: "Please enter your full name.",
-        },
+        { error: "Please enter your full name." },
         { status: 400 }
       );
     }
@@ -60,18 +48,14 @@ export async function POST(request: Request) {
       accountType !== "provider"
     ) {
       return NextResponse.json(
-        {
-          error: "Invalid account type.",
-        },
+        { error: "Invalid account type." },
         { status: 400 }
       );
     }
 
     if (accountType === "provider" && !skill) {
       return NextResponse.json(
-        {
-          error: "Please select your service.",
-        },
+        { error: "Please select your service." },
         { status: 400 }
       );
     }
@@ -81,17 +65,10 @@ export async function POST(request: Request) {
       (experience < 0 || experience > 60)
     ) {
       return NextResponse.json(
-        {
-          error:
-            "Please enter valid years of experience.",
-        },
+        { error: "Please enter valid years of experience." },
         { status: 400 }
       );
     }
-
-    // -----------------------------
-    // SERVER SUPABASE CLIENT
-    // -----------------------------
 
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -100,14 +77,11 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SECRET_KEY;
 
     if (!supabaseUrl || !supabaseSecretKey) {
-      console.error(
-        "Missing Supabase server environment variables."
-      );
+      console.error("Missing Supabase server environment variables.");
 
       return NextResponse.json(
         {
-          error:
-            "Server authentication is not configured.",
+          error: "Server authentication is not configured.",
         },
         { status: 500 }
       );
@@ -125,150 +99,64 @@ export async function POST(request: Request) {
       }
     );
 
-    // -----------------------------
-    // INTERNAL AUTH EMAIL
-    // -----------------------------
+    const internalEmail = `${username}@jasvito.local`;
 
-    const internalEmail =
-      `${username}@jasvito.local`;
-
-    // -----------------------------
-    // CHECK EXISTING USER
-    // -----------------------------
-
-    const {
-      data: existingUsers,
-      error: listError,
-    } =
-      await supabaseAdmin.auth.admin.listUsers({
-        page: 1,
-        perPage: 1000,
-      });
-
-    if (listError) {
-      console.error(
-        "LIST USERS ERROR:",
-        listError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Unable to check username availability.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const usernameExists =
-      existingUsers.users.some(
-        (user) =>
-          user.email?.toLowerCase() ===
-          internalEmail
-      );
-
-    if (usernameExists) {
-      return NextResponse.json(
-        {
-          error:
-            "This username is already registered. Please choose another username.",
-        },
-        { status: 409 }
-      );
-    }
-
-    // -----------------------------
-    // CREATE AUTH USER
-    // -----------------------------
-
+    // Let Supabase handle duplicate usernames.
+    // This avoids the failing admin.listUsers() availability check.
     const {
       data: createdUser,
       error: createError,
-    } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: internalEmail,
-
-        password: password,
-
-        email_confirm: true,
-
-        user_metadata: {
-          username,
-          account_type: accountType,
-          full_name: name,
-
-          skill:
-            accountType === "provider"
-              ? skill
-              : "",
-
-          experience:
-            accountType === "provider"
-              ? experience
-              : 0,
-        },
-      });
+    } = await supabaseAdmin.auth.admin.createUser({
+      email: internalEmail,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        username,
+        account_type: accountType,
+        full_name: name,
+        skill: accountType === "provider" ? skill : "",
+        experience:
+          accountType === "provider" ? experience : 0,
+      },
+    });
 
     if (createError) {
-      console.error(
-        "CREATE USER ERROR:",
-        createError
-      );
+      console.error("CREATE USER ERROR:", createError);
+
+      const duplicate =
+        createError.message
+          ?.toLowerCase()
+          .includes("already");
 
       return NextResponse.json(
         {
-          error:
-            createError.message ||
-            "Unable to create account.",
+          error: duplicate
+            ? "This username is already registered. Please choose another username."
+            : createError.message ||
+              "Unable to create account.",
         },
-        { status: 400 }
+        { status: duplicate ? 409 : 400 }
       );
     }
 
     if (!createdUser.user) {
       return NextResponse.json(
-        {
-          error:
-            "Account could not be created.",
-        },
+        { error: "Account could not be created." },
         { status: 500 }
       );
     }
 
-    // -----------------------------
-    // ACCOUNT PROFILE
-    // -----------------------------
-    //
-    // IMPORTANT:
-    // The Supabase database trigger
-    // "on_auth_user_created_jasvito"
-    // automatically calls
-    // "handle_new_jasvito_user()".
-    //
-    // That trigger creates:
-    // 1. user_accounts
-    // 2. customer_profiles OR providers
-    //
-    // Therefore we DO NOT insert into
-    // user_accounts here.
-    //
-    // -----------------------------
-
     return NextResponse.json(
       {
         success: true,
-        message:
-          "Account created successfully.",
+        message: "Account created successfully.",
         username,
         accountType,
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error(
-      "REGISTER ROUTE ERROR:",
-      error
-    );
+    console.error("REGISTER ROUTE ERROR:", error);
 
     return NextResponse.json(
       {
