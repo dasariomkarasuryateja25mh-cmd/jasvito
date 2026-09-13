@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Suspense,
-  useEffect,
-  useState,
-} from "react";
-
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
 
@@ -14,58 +9,32 @@ type AccountType = "customer" | "provider";
 function LoginPageContent() {
   const searchParams = useSearchParams();
 
-  const [isSignup, setIsSignup] =
-    useState(false);
+  const [accountType, setAccountType] = useState<AccountType>("customer");
+  const [isSignup, setIsSignup] = useState(false);
 
-  const [accountType, setAccountType] =
-    useState<AccountType>("customer");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
 
-  const [username, setUsername] =
-    useState("");
+  const [skill, setSkill] = useState("");
+  const [experience, setExperience] = useState("");
 
-  const [password, setPassword] =
-    useState("");
-
-  const [name, setName] =
-    useState("");
-
-  const [skill, setSkill] =
-    useState("");
-
-  const [experience, setExperience] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [message, setMessage] =
-    useState("");
-
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
   const [messageType, setMessageType] =
-    useState<"success" | "error">(
-      "error"
-    );
-
-  // --------------------------------
-  // CUSTOMER / PROVIDER SELECTION
-  // --------------------------------
+    useState<"success" | "error">("error");
 
   useEffect(() => {
-    const type =
-      searchParams.get("type");
+    const type = searchParams.get("type");
 
-    if (
-      type === "customer" ||
-      type === "provider"
-    ) {
+    if (type === "customer" || type === "provider") {
       setAccountType(type);
-      setIsSignup(true);
+    } else {
+      window.location.replace("/");
     }
   }, [searchParams]);
 
-  // --------------------------------
-  // MESSAGE
-  // --------------------------------
+  const isProvider = accountType === "provider";
 
   function showMessage(
     text: string,
@@ -75,39 +44,19 @@ function LoginPageContent() {
     setMessageType(type);
   }
 
-  // --------------------------------
-  // USERNAME VALIDATION
-  // --------------------------------
-
-  function validateUsername(
-    value: string
-  ) {
-    return /^[a-zA-Z0-9_]{3,30}$/.test(
-      value
-    );
+  function validateUsername(value: string) {
+    return /^[a-zA-Z0-9_]{3,30}$/.test(value);
   }
 
-  // --------------------------------
-  // CREATE ACCOUNT
-  // --------------------------------
-
   async function createAccount() {
-    const cleanUsername =
-      username.trim().toLowerCase();
+    const cleanUsername = username.trim().toLowerCase();
 
     if (!name.trim()) {
-      showMessage(
-        "Please enter your full name.",
-        "error"
-      );
+      showMessage("Please enter your full name.", "error");
       return;
     }
 
-    if (
-      !validateUsername(
-        cleanUsername
-      )
-    ) {
+    if (!validateUsername(cleanUsername)) {
       showMessage(
         "Username must be 3–30 characters and contain only letters, numbers or underscore.",
         "error"
@@ -123,23 +72,19 @@ function LoginPageContent() {
       return;
     }
 
-    if (
-      accountType === "provider" &&
-      !skill
-    ) {
-      showMessage(
-        "Please select your service.",
-        "error"
-      );
+    if (isProvider && !skill) {
+      showMessage("Please select your service.", "error");
       return;
     }
 
     if (
-      accountType === "provider" &&
-      experience === ""
+      isProvider &&
+      (experience === "" ||
+        Number(experience) < 0 ||
+        Number(experience) > 60)
     ) {
       showMessage(
-        "Please enter your years of experience.",
+        "Please enter valid years of experience.",
         "error"
       );
       return;
@@ -149,102 +94,58 @@ function LoginPageContent() {
     setMessage("");
 
     try {
-      const response =
-        await fetch(
-          "/api/auth/register",
-          {
-            method: "POST",
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: cleanUsername,
+          password,
+          name: name.trim(),
+          accountType,
+          skill: isProvider ? skill : "",
+          experience: isProvider ? Number(experience) : 0,
+        }),
+      });
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              username:
-                cleanUsername,
-
-              password:
-                password,
-
-              name:
-                name.trim(),
-
-              accountType:
-                accountType,
-
-              skill:
-                accountType ===
-                "provider"
-                  ? skill
-                  : "",
-
-              experience:
-                accountType ===
-                "provider"
-                  ? Number(
-                      experience
-                    )
-                  : 0,
-            }),
-          }
-        );
-
-      const result =
-        await response.json();
+      const result = await response.json();
 
       if (!response.ok) {
-        setLoading(false);
-
         showMessage(
-          result.error ||
-            "Unable to create account.",
+          result.error || "Unable to create account.",
           "error"
         );
-
+        setLoading(false);
         return;
       }
 
-      setLoading(false);
-
       showMessage(
-        "Account created successfully! You can now login with your username and password. ✅",
+        "Account created successfully. You can now login.",
         "success"
       );
 
       setPassword("");
+      setLoading(false);
 
       setTimeout(() => {
         setIsSignup(false);
         setMessage("");
       }, 1500);
-
     } catch (error) {
-      console.error(
-        "REGISTER ERROR:",
-        error
-      );
-
-      setLoading(false);
+      console.error("REGISTER ERROR:", error);
 
       showMessage(
         "Unable to connect to the server. Please try again.",
         "error"
       );
+
+      setLoading(false);
     }
   }
 
-  // --------------------------------
-  // LOGIN
-  // --------------------------------
-
   async function login() {
     const cleanUsername = username.trim().toLowerCase();
-
-    if (!cleanUsername) {
-      showMessage("Please enter your username.", "error");
-      return;
-    }
 
     if (!validateUsername(cleanUsername)) {
       showMessage("Please enter a valid username.", "error");
@@ -260,9 +161,19 @@ function LoginPageContent() {
     setMessage("");
 
     try {
-      // Clear any previous role session first.
+      /*
+       * Clear any previous session.
+       * This prevents Customer → Provider or Provider → Customer
+       * session crossover.
+       */
       await supabase.auth.signOut();
 
+      /*
+       * Existing backend accounts still use the internal
+       * @jasvito.local authentication email.
+       * This is intentionally NOT changed because existing
+       * accounts must continue to work.
+       */
       const internalEmail = `${cleanUsername}@jasvito.local`;
 
       const { data, error } =
@@ -272,8 +183,11 @@ function LoginPageContent() {
         });
 
       if (error || !data.user) {
+        showMessage(
+          "Username or password is incorrect.",
+          "error"
+        );
         setLoading(false);
-        showMessage("Username or password is incorrect.", "error");
         return;
       }
 
@@ -285,32 +199,58 @@ function LoginPageContent() {
           .maybeSingle();
 
       if (accountError || !account) {
+        console.error("ACCOUNT ERROR:", accountError);
+
         await supabase.auth.signOut();
+
+        showMessage(
+          "Unable to load your account. Please contact support.",
+          "error"
+        );
+
         setLoading(false);
-        showMessage("Unable to load your account type.", "error");
+        return;
+      }
+
+      /*
+       * Security check:
+       * The user must actually belong to the role they selected
+       * from the homepage.
+       */
+      if (account.account_type !== accountType) {
+        await supabase.auth.signOut();
+
+        showMessage(
+          `This username belongs to a ${
+            account.account_type === "provider"
+              ? "Service Provider"
+              : "Customer"
+          } account. Please use the correct GramServe entry point.`,
+          "error"
+        );
+
+        setLoading(false);
         return;
       }
 
       setLoading(false);
 
-      window.location.replace(
-        account.account_type === "provider"
-          ? "/provider"
-          : "/customer"
-      );
+      if (accountType === "provider") {
+        window.location.replace("/provider");
+      } else {
+        window.location.replace("/customer");
+      }
     } catch (error) {
       console.error("LOGIN ERROR:", error);
-      setLoading(false);
+
       showMessage(
         "Unable to connect to the server. Please try again.",
         "error"
       );
+
+      setLoading(false);
     }
   }
-
-  // --------------------------------
-  // SUBMIT
-  // --------------------------------
 
   async function handleSubmit() {
     if (isSignup) {
@@ -320,275 +260,181 @@ function LoginPageContent() {
     }
   }
 
-  // --------------------------------
-  // PAGE
-  // --------------------------------
+  function switchMode() {
+    setIsSignup(!isSignup);
+    setMessage("");
+    setPassword("");
+  }
 
   return (
-    <main className="min-h-screen bg-gray-50">
-
-      {/* NAVIGATION */}
-
-      <nav className="bg-white px-8 py-5 shadow-sm">
-
-        <div className="mx-auto max-w-5xl">
+    <main className="min-h-screen bg-slate-50">
+      {/* HEADER */}
+      <nav className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+          <a
+            href="/"
+            className="text-2xl font-extrabold tracking-tight text-blue-700"
+          >
+            Gram<span className="text-slate-900">Serve</span>
+          </a>
 
           <a
             href="/"
-            className="text-2xl font-bold text-blue-600"
+            className="text-sm font-semibold text-slate-600 hover:text-blue-700"
           >
-            JASVITO
+            ← Back
           </a>
-
         </div>
-
       </nav>
 
       {/* MAIN */}
-
-      <section className="flex min-h-[calc(100vh-80px)] items-center justify-center px-6 py-12">
-
-        <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg">
-
-          {/* HEADER */}
-
-          <div className="text-center">
-
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-600">
-              JASVITO
-            </p>
-
-            <h1 className="mt-2 text-3xl font-bold text-gray-900">
-
-              {isSignup
-                ? "Create your account"
-                : "Welcome back"}
-
-            </h1>
-
-            <p className="mt-2 text-gray-600">
-
-              {isSignup
-                ? "Create your JASVITO account."
-                : "Login using your username and password."}
-
-            </p>
-
-          </div>
-
-          {/* ACCOUNT TYPE */}
-
-          <div className="mt-8">
-
-            <label className="font-semibold text-gray-800">
-              I am a
-            </label>
-
-            <div className="mt-3 grid grid-cols-2 gap-4">
-
-              {/* CUSTOMER */}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setAccountType(
-                    "customer"
-                  )
-                }
-                className={`rounded-xl border p-5 ${
-                  accountType ===
-                  "customer"
-                    ? "border-blue-600 bg-blue-50"
-                    : "border-gray-300 bg-white"
-                }`}
-              >
-
-                <div className="text-3xl">
-                  👤
-                </div>
-
-                <p className="mt-2 font-bold">
-                  Customer
-                </p>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Find local professionals
-                </p>
-
-              </button>
-
-              {/* PROVIDER */}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setAccountType(
-                    "provider"
-                  )
-                }
-                className={`rounded-xl border p-5 ${
-                  accountType ===
-                  "provider"
-                    ? "border-blue-600 bg-blue-50"
-                    : "border-gray-300 bg-white"
-                }`}
-              >
-
-                <div className="text-3xl">
-                  🛠️
-                </div>
-
-                <p className="mt-2 font-bold">
-                  Provider
-                </p>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Offer your services
-                </p>
-
-              </button>
-
+      <section className="flex min-h-[calc(100vh-81px)] items-center justify-center px-5 py-10">
+        <div className="w-full max-w-md">
+          {/* ROLE HEADER */}
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100 text-3xl">
+              {isProvider ? "🛠️" : "👤"}
             </div>
 
+            <p className="text-sm font-bold uppercase tracking-widest text-blue-600">
+              GramServe
+            </p>
+
+            <h1 className="mt-2 text-3xl font-extrabold text-slate-900">
+              {isProvider
+                ? "Service Provider"
+                : "Customer"}
+            </h1>
+
+            <p className="mt-2 text-slate-500">
+              {isProvider
+                ? "Connect with customers and grow your local service business."
+                : "Find trusted local professionals for your service needs."}
+            </p>
           </div>
 
-          {/* FULL NAME */}
+          {/* CARD */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8">
+            <div className="mb-7">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {isSignup
+                  ? "Create your account"
+                  : "Welcome back"}
+              </h2>
 
-          {isSignup && (
-            <div className="mt-6">
+              <p className="mt-1 text-sm text-slate-500">
+                {isSignup
+                  ? `Create your ${
+                      isProvider
+                        ? "provider"
+                        : "customer"
+                    } account`
+                  : "Login with your username and password"}
+              </p>
+            </div>
 
-              <label className="font-semibold text-gray-800">
-                Full Name
+            {/* FULL NAME */}
+            {isSignup && (
+              <div className="mb-5">
+                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  Full Name
+                </label>
+
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) =>
+                    setName(e.target.value)
+                  }
+                  placeholder="Enter your full name"
+                  autoComplete="name"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            )}
+
+            {/* USERNAME */}
+            <div className="mb-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Username
               </label>
 
               <input
                 type="text"
-                value={name}
+                value={username}
                 onChange={(e) =>
-                  setName(
-                    e.target.value
-                  )
+                  setUsername(e.target.value)
                 }
-                placeholder="Enter your full name"
-                className="mt-3 w-full rounded-lg border border-gray-300 p-4 outline-none focus:border-blue-500"
+                placeholder="Enter your username"
+                autoComplete="username"
+                className="w-full rounded-xl border border-slate-300 px-4 py-3.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               />
 
+              <p className="mt-2 text-xs text-slate-400">
+                3–30 characters · letters, numbers and
+                underscore
+              </p>
             </div>
-          )}
 
-          {/* USERNAME */}
-
-          <div className="mt-6">
-
-            <label className="font-semibold text-gray-800">
-              Username
-            </label>
-
-            <input
-              type="text"
-              value={username}
-              onChange={(e) =>
-                setUsername(
-                  e.target.value
-                )
-              }
-              placeholder="Example: provider123"
-              autoComplete="username"
-              className="mt-3 w-full rounded-lg border border-gray-300 p-4 outline-none focus:border-blue-500"
-            />
-
-            <p className="mt-2 text-xs text-gray-500">
-              3–30 characters. Use letters, numbers or underscore.
-            </p>
-
-          </div>
-
-          {/* PROVIDER DETAILS */}
-
-          {isSignup &&
-            accountType ===
-              "provider" && (
+            {/* PROVIDER DETAILS */}
+            {isSignup && isProvider && (
               <>
-
-                {/* SERVICE */}
-
-                <div className="mt-6">
-
-                  <label className="font-semibold text-gray-800">
+                <div className="mb-5">
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
                     Service / Skill
                   </label>
 
                   <select
                     value={skill}
                     onChange={(e) =>
-                      setSkill(
-                        e.target.value
-                      )
+                      setSkill(e.target.value)
                     }
-                    className="mt-3 w-full rounded-lg border border-gray-300 bg-white p-4"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   >
-
                     <option value="">
                       Select your service
                     </option>
-
                     <option value="Electrician">
                       Electrician
                     </option>
-
                     <option value="Plumber">
                       Plumber
                     </option>
-
                     <option value="Carpenter">
                       Carpenter
                     </option>
-
                     <option value="Painter">
                       Painter
                     </option>
-
                     <option value="Cleaner">
                       Cleaner
                     </option>
-
                     <option value="AC Repair">
                       AC Repair
                     </option>
-
                     <option value="Appliance Repair">
                       Appliance Repair
                     </option>
-
                     <option value="CCTV Installation">
                       CCTV Installation
                     </option>
-
                     <option value="Bike Mechanic">
                       Bike Mechanic
                     </option>
-
                     <option value="Car Mechanic">
                       Car Mechanic
                     </option>
-
                     <option value="Welder">
                       Welder
                     </option>
-
                     <option value="Mason">
                       Mason
                     </option>
-
                   </select>
-
                 </div>
 
-                {/* EXPERIENCE */}
-
-                <div className="mt-6">
-
-                  <label className="font-semibold text-gray-800">
+                <div className="mb-5">
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
                     Years of Experience
                   </label>
 
@@ -596,166 +442,123 @@ function LoginPageContent() {
                     type="number"
                     min="0"
                     max="60"
-                    value={
-                      experience
-                    }
+                    value={experience}
                     onChange={(e) =>
-                      setExperience(
-                        e.target.value
-                      )
+                      setExperience(e.target.value)
                     }
                     placeholder="Example: 5"
-                    className="mt-3 w-full rounded-lg border border-gray-300 bg-white p-4"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3.5 text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
-
                 </div>
-
               </>
             )}
 
-          {/* PASSWORD */}
+            {/* PASSWORD */}
+            <div className="mb-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Password
+              </label>
 
-          <div className="mt-6">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
+                placeholder="Enter your password"
+                autoComplete={
+                  isSignup
+                    ? "new-password"
+                    : "current-password"
+                }
+                className="w-full rounded-xl border border-slate-300 px-4 py-3.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              />
 
-            <label className="font-semibold text-gray-800">
-              Password
-            </label>
-
-            <input
-              type="password"
-              value={password}
-              onChange={(e) =>
-                setPassword(
-                  e.target.value
-                )
-              }
-              placeholder="Minimum 6 characters"
-              autoComplete={
-                isSignup
-                  ? "new-password"
-                  : "current-password"
-              }
-              className="mt-3 w-full rounded-lg border border-gray-300 p-4 outline-none focus:border-blue-500"
-            />
-
-          </div>
-
-          {/* INFORMATION */}
-
-          {isSignup && (
-            <div className="mt-5 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
-
-              <p className="font-semibold">
-                🔐 Username + Password
-              </p>
-
-              <p className="mt-1">
-                No OTP or email confirmation is required.
-              </p>
-
+              {isSignup && (
+                <p className="mt-2 text-xs text-slate-400">
+                  Minimum 6 characters
+                </p>
+              )}
             </div>
-          )}
 
-          {/* MESSAGE */}
+            {/* MESSAGE */}
+            {message && (
+              <div
+                className={`mb-5 rounded-xl p-4 text-sm font-semibold ${
+                  messageType === "success"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                {message}
+              </div>
+            )}
 
-          {message && (
-            <div
-              className={`mt-5 rounded-lg p-4 text-center font-semibold ${
-                messageType ===
-                "success"
-                  ? "bg-green-50 text-green-700"
-                  : "bg-red-50 text-red-700"
-              }`}
-            >
-              {message}
-            </div>
-          )}
-
-          {/* BUTTON */}
-
-          <button
-            type="button"
-            onClick={
-              handleSubmit
-            }
-            disabled={loading}
-            className="mt-6 w-full rounded-lg bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-
-            {loading
-              ? "Please wait..."
-              : isSignup
-              ? "Create Account"
-              : "Login"}
-
-          </button>
-
-          {/* SWITCH */}
-
-          <div className="mt-6 text-center">
-
-            <span className="text-gray-600">
-
-              {isSignup
-                ? "Already have an account?"
-                : "Don't have an account?"}
-
-            </span>
-
+            {/* SUBMIT */}
             <button
               type="button"
-              onClick={() => {
-                setIsSignup(
-                  !isSignup
-                );
-
-                setMessage("");
-                setPassword("");
-              }}
-              className="ml-2 font-bold text-blue-600 hover:underline"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full rounded-xl bg-blue-700 px-5 py-4 font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-
-              {isSignup
-                ? "Login"
-                : "Create Account"}
-
+              {loading
+                ? "Please wait..."
+                : isSignup
+                ? `Create ${
+                    isProvider
+                      ? "Provider"
+                      : "Customer"
+                  } Account`
+                : "Login"}
             </button>
 
+            {/* SWITCH LOGIN / SIGNUP */}
+            <div className="mt-6 border-t border-slate-100 pt-6 text-center">
+              <p className="text-sm text-slate-500">
+                {isSignup
+                  ? "Already have an account?"
+                  : "New to GramServe?"}
+
+                <button
+                  type="button"
+                  onClick={switchMode}
+                  className="ml-2 font-bold text-blue-700 hover:underline"
+                >
+                  {isSignup
+                    ? "Login"
+                    : "Create Account"}
+                </button>
+              </p>
+            </div>
           </div>
 
+          {/* TRUST MESSAGE */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-slate-400">
+              🔐 Secure username & password authentication
+            </p>
+          </div>
         </div>
-
       </section>
-
     </main>
   );
 }
-
-// --------------------------------
-// SUSPENSE WRAPPER
-// --------------------------------
 
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen items-center justify-center bg-gray-50">
-
-          <p className="text-gray-600">
-            Loading JASVITO...
-          </p>
-
+        <main className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-700" />
+            <p className="mt-4 text-sm font-semibold text-slate-500">
+              Loading GramServe...
+            </p>
+          </div>
         </main>
       }
     >
-
       <LoginPageContent />
-
     </Suspense>
   );
 }
-
-
-
-
-
