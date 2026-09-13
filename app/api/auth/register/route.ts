@@ -7,10 +7,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    const username = String(body.username || "")
-      .trim()
-      .toLowerCase();
-
+    const username = String(body.username || "").trim().toLowerCase();
     const password = String(body.password || "");
     const name = String(body.name || "").trim();
     const accountType = body.accountType as AccountType;
@@ -19,19 +16,14 @@ export async function POST(request: Request) {
 
     if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
       return NextResponse.json(
-        {
-          error:
-            "Username must be 3–30 characters and contain only letters, numbers or underscore.",
-        },
+        { error: "Username must be 3–30 characters and contain only letters, numbers or underscore." },
         { status: 400 }
       );
     }
 
     if (password.length < 6) {
       return NextResponse.json(
-        {
-          error: "Password must contain at least 6 characters.",
-        },
+        { error: "Password must contain at least 6 characters." },
         { status: 400 }
       );
     }
@@ -43,10 +35,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      accountType !== "customer" &&
-      accountType !== "provider"
-    ) {
+    if (accountType !== "customer" && accountType !== "provider") {
       return NextResponse.json(
         { error: "Invalid account type." },
         { status: 400 }
@@ -60,86 +49,64 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      accountType === "provider" &&
-      (experience < 0 || experience > 60)
-    ) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
-        { error: "Please enter valid years of experience." },
-        { status: 400 }
-      );
-    }
-
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    const supabaseSecretKey =
-      process.env.SUPABASE_SECRET_KEY;
-
-    if (!supabaseUrl || !supabaseSecretKey) {
-      console.error("Missing Supabase server environment variables.");
-
-      return NextResponse.json(
-        {
-          error: "Server authentication is not configured.",
-        },
+        { error: "Supabase is not configured." },
         { status: 500 }
       );
     }
 
-    const supabaseAdmin = createClient(
-      supabaseUrl,
-      supabaseSecretKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false,
-        },
-      }
-    );
-
-    const internalEmail = `${username}@jasvito.local`;
-
-    // Let Supabase handle duplicate usernames.
-    // This avoids the failing admin.listUsers() availability check.
-    const {
-      data: createdUser,
-      error: createError,
-    } = await supabaseAdmin.auth.admin.createUser({
-      email: internalEmail,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        username,
-        account_type: accountType,
-        full_name: name,
-        skill: accountType === "provider" ? skill : "",
-        experience:
-          accountType === "provider" ? experience : 0,
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
     });
 
-    if (createError) {
-      console.error("CREATE USER ERROR:", createError);
+    // Users never enter or see an email.
+    // Supabase uses this internal identity only.
+    const internalEmail = `${username}@jasvito.local`;
 
-      const duplicate =
-        createError.message
-          ?.toLowerCase()
-          .includes("already");
+    const { data, error } = await supabase.auth.signUp({
+      email: internalEmail,
+      password,
+      options: {
+        data: {
+          username,
+          full_name: name,
+          account_type: accountType,
+          skill: accountType === "provider" ? skill : "",
+          experience: accountType === "provider" ? experience : 0,
+        },
+      },
+    });
+
+    if (error) {
+      console.error("SIGNUP ERROR:", error);
+
+      const message = error.message.toLowerCase();
+
+      if (
+        message.includes("already") ||
+        message.includes("registered") ||
+        message.includes("exists")
+      ) {
+        return NextResponse.json(
+          { error: "This username is already registered. Please choose another username." },
+          { status: 409 }
+        );
+      }
 
       return NextResponse.json(
-        {
-          error: duplicate
-            ? "This username is already registered. Please choose another username."
-            : createError.message ||
-              "Unable to create account.",
-        },
-        { status: duplicate ? 409 : 400 }
+        { error: error.message },
+        { status: 400 }
       );
     }
 
-    if (!createdUser.user) {
+    if (!data.user) {
       return NextResponse.json(
         { error: "Account could not be created." },
         { status: 500 }
@@ -156,13 +123,10 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("REGISTER ROUTE ERROR:", error);
+    console.error("REGISTER ERROR:", error);
 
     return NextResponse.json(
-      {
-        error:
-          "Something went wrong while creating the account.",
-      },
+      { error: "Unable to create account. Please try again." },
       { status: 500 }
     );
   }
