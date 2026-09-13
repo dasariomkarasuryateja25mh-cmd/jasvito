@@ -446,18 +446,6 @@ export default function ProviderPage() {
   }, []);
 
   useEffect(() => {
-    if (!provider?.id) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      loadRequests();
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [provider?.id]);
-
-  useEffect(() => {
     if (!provider?.id) return;
 
     const interval = setInterval(() => {
@@ -490,7 +478,7 @@ export default function ProviderPage() {
             href="/"
             className="text-2xl font-bold text-blue-600"
           >
-            JASVITO
+            GramServe
           </a>
 
           <button

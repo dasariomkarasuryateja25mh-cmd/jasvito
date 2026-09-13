@@ -646,7 +646,7 @@ export default function CustomerProfilePage() {
             href="/"
             className="text-2xl font-bold text-blue-600"
           >
-            JASVITO
+            GramServe
           </a>
 
           <a

@@ -544,7 +544,7 @@ export default function ProviderProfilePage() {
             href="/"
             className="text-2xl font-bold text-blue-600"
           >
-            JASVITO
+            GramServe
           </a>
 
           <a
