@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type AccountType = "customer" | "provider";
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -10,13 +8,13 @@ export async function POST(request: Request) {
     const username = String(body.username || "").trim().toLowerCase();
     const password = String(body.password || "");
     const name = String(body.name || "").trim();
-    const accountType = body.accountType as AccountType;
+    const accountType = String(body.accountType || "");
     const skill = String(body.skill || "").trim();
     const experience = Number(body.experience || 0);
 
     if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
       return NextResponse.json(
-        { error: "Username must be 3–30 characters and contain only letters, numbers or underscore." },
+        { error: "Username must be 3–30 characters and use only letters, numbers or underscore." },
         { status: 400 }
       );
     }
@@ -54,20 +52,14 @@ export async function POST(request: Request) {
 
     if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
-        { error: "Supabase is not configured." },
+        { error: "Supabase authentication is not configured." },
         { status: 500 }
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Users never enter or see an email.
-    // Supabase uses this internal identity only.
+    // Internal identity only — user never enters an email.
     const internalEmail = `${username}@jasvito.local`;
 
     const { data, error } = await supabase.auth.signUp({
