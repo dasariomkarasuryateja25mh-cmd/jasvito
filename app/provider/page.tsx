@@ -7,11 +7,22 @@ import AuthGuard from "../components/AuthGuard";
 type ServiceRequest = {
   id: string;
   provider_id: string;
+  customer_user_id?: string | null;
   customer_name: string;
   service: string;
   location: string;
   status: string;
   created_at: string;
+};
+
+type CustomerDetails = {
+  phone: string | null;
+  home_location: string | null;
+  home_latitude: number | null;
+  home_longitude: number | null;
+  office_location: string | null;
+  office_latitude: number | null;
+  office_longitude: number | null;
 };
 
 type ProviderProfile = {
@@ -69,6 +80,9 @@ export default function ProviderPage() {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  const [customerDetails, setCustomerDetails] =
+    useState<Record<string, CustomerDetails>>({});
+
   async function loadProvider() {
     const {
       data: { user },
@@ -121,6 +135,140 @@ export default function ProviderPage() {
     setLoading(false);
   }
 
+  function getCustomerLocation(request: ServiceRequest) {
+    const details = request.customer_user_id
+      ? customerDetails[request.customer_user_id]
+      : undefined;
+
+    if (!details) {
+      return {
+        latitude: null,
+        longitude: null,
+        label: request.location,
+      };
+    }
+
+    // Match the exact address stored on the request so Home/Office
+    // requests use the correct GPS coordinates.
+    if (
+      details.home_location === request.location &&
+      details.home_latitude !== null &&
+      details.home_longitude !== null
+    ) {
+      return {
+        latitude: details.home_latitude,
+        longitude: details.home_longitude,
+        label: details.home_location,
+      };
+    }
+
+    if (
+      details.office_location === request.location &&
+      details.office_latitude !== null &&
+      details.office_longitude !== null
+    ) {
+      return {
+        latitude: details.office_latitude,
+        longitude: details.office_longitude,
+        label: details.office_location,
+      };
+    }
+
+    // Fallback if the request address does not exactly match the profile.
+    if (
+      details.home_latitude !== null &&
+      details.home_longitude !== null
+    ) {
+      return {
+        latitude: details.home_latitude,
+        longitude: details.home_longitude,
+        label: details.home_location || request.location,
+      };
+    }
+
+    if (
+      details.office_latitude !== null &&
+      details.office_longitude !== null
+    ) {
+      return {
+        latitude: details.office_latitude,
+        longitude: details.office_longitude,
+        label: details.office_location || request.location,
+      };
+    }
+
+    return {
+      latitude: null,
+      longitude: null,
+      label: request.location,
+    };
+  }
+
+  function openCustomerMap(request: ServiceRequest) {
+    const customerLocation = getCustomerLocation(request);
+
+    if (
+      customerLocation.latitude !== null &&
+      customerLocation.longitude !== null
+    ) {
+      window.open(
+        `https://www.google.com/maps/dir/?api=1&destination=${customerLocation.latitude},${customerLocation.longitude}`,
+        "_blank"
+      );
+      return;
+    }
+
+    window.open(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        request.location
+      )}`,
+      "_blank"
+    );
+  }
+
+  async function loadCustomerDetails(requestList: ServiceRequest[]) {
+    const customerIds = Array.from(
+      new Set(
+        requestList
+          .map((request) => request.customer_user_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    if (customerIds.length === 0) {
+      setCustomerDetails({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("customer_profiles")
+      .select(
+        "user_id, phone, home_location, home_latitude, home_longitude, office_location, office_latitude, office_longitude"
+      )
+      .in("user_id", customerIds);
+
+    if (error) {
+      console.error("CUSTOMER DETAILS LOAD ERROR:", error);
+      return;
+    }
+
+    const detailsMap: Record<string, CustomerDetails> = {};
+
+    (data || []).forEach((row) => {
+      detailsMap[row.user_id] = {
+        phone: row.phone ?? null,
+        home_location: row.home_location ?? null,
+        home_latitude: row.home_latitude ?? null,
+        home_longitude: row.home_longitude ?? null,
+        office_location: row.office_location ?? null,
+        office_latitude: row.office_latitude ?? null,
+        office_longitude: row.office_longitude ?? null,
+      };
+    });
+
+    setCustomerDetails(detailsMap);
+  }
+
   async function loadRequests(providerId?: string) {
     /*
      * Service requests store providers.id in provider_id.
@@ -157,7 +305,9 @@ export default function ProviderPage() {
       return;
     }
 
-    setRequests(data || []);
+    const requestList = (data || []) as ServiceRequest[];
+    setRequests(requestList);
+    await loadCustomerDetails(requestList);
   }
 
   function getCurrentLocation() {
@@ -841,6 +991,35 @@ export default function ProviderPage() {
                     📍 {request.location}
                   </p>
 
+                  {(() => {
+                    const customerLocation =
+                      getCustomerLocation(request);
+
+                    return (
+                      <div className="mt-4">
+                        {customerLocation.latitude !== null &&
+                        customerLocation.longitude !== null ? (
+                          <p className="text-xs text-gray-500">
+                            GPS: {customerLocation.latitude.toFixed(6)},{" "}
+                            {customerLocation.longitude.toFixed(6)}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            GPS coordinates are not available yet.
+                          </p>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => openCustomerMap(request)}
+                          className="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          🗺️ Track Customer on Google Maps
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                 </div>
 
                 {request.status === "pending" && (
@@ -874,8 +1053,37 @@ export default function ProviderPage() {
                 )}
 
                 {request.status === "accepted" && (
-                  <div className="mt-6 rounded-lg bg-green-50 p-4 text-center font-semibold text-green-700">
-                    ✓ You accepted this service request.
+                  <div className="mt-6 space-y-3">
+                    <div className="rounded-lg bg-green-50 p-4 text-center font-semibold text-green-700">
+                      ✓ You accepted this service request.
+                    </div>
+
+                    {(() => {
+                      const details = request.customer_user_id
+                        ? customerDetails[request.customer_user_id]
+                        : undefined;
+
+                      return details?.phone ? (
+                        <a
+                          href={`tel:${details.phone}`}
+                          className="block w-full rounded-lg bg-emerald-600 px-6 py-3 text-center font-semibold text-white hover:bg-emerald-700"
+                        >
+                          📞 Call Customer
+                        </a>
+                      ) : (
+                        <div className="rounded-lg bg-gray-100 p-3 text-center text-sm text-gray-500">
+                          Customer phone number unavailable.
+                        </div>
+                      );
+                    })()}
+
+                    <button
+                      type="button"
+                      onClick={() => openCustomerMap(request)}
+                      className="w-full rounded-lg bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800"
+                    >
+                      🗺️ Navigate to Customer
+                    </button>
                   </div>
                 )}
 
